@@ -6,7 +6,7 @@ ELM_FILES = $(shell find . -path ./elm-stuff -prune -o -type f -name '*.elm')
 .PHONY: clean clean-deps server dev release test format-validate check
 
 main.js: $(ELM_FILES)
-	yarn elm-make src/Main.elm -- --yes --warn $(ELM_MAKE_FLAGS) --output $@
+	yarn elm-make src/Main.elm --yes --warn $(ELM_MAKE_FLAGS) --output $@
 
 dev : ELM_MAKE_FLAGS = --debug
 dev: main.js
@@ -19,7 +19,7 @@ clean:
 	rm -rf elm-stuff/build-artifacts
 
 server:
-	yarn elm-live src/Main.elm -- --path-to-elm-make=node_modules/.bin/elm-make --output=main.js --debug --host=$(shell ipconfig getifaddr en0)
+	yarn elm-live src/Main.elm --path-to-elm-make=node_modules/.bin/elm-make --output=main.js --debug --host=$(shell ipconfig getifaddr en0)
 
 main.min.js : ELM_MAKE_FLAGS =
 main.min.js: main.js
@@ -31,6 +31,6 @@ test:
 	yarn elm-test
 
 format-validate:
-	yarn elm-format src/ tests/ -- --validate
+	yarn elm-format src/ tests/ --validate
 
 check: test format-validate
