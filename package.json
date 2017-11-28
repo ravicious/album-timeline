@@ -1,4 +1,5 @@
 {
+  "private": true,
   "dependencies": {
     "elm": "^0.18.0",
     "elm-live": "^2.7.5"
