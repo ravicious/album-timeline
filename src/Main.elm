@@ -2,17 +2,14 @@ module Main exposing (..)
 
 import Html exposing (..)
 import Http
-import Json.Decode
+import LastFmApi exposing (AlbumFromWeeklyChart)
 
 
 type alias Model =
-    { albums : List Album
+    { albums : List AlbumFromWeeklyChart
     , months : List Month
+    , lastFmClient : LastFmApi.Client
     }
-
-
-type alias Album =
-    { artist : String, name : String, playCount : Int }
 
 
 type alias Month =
@@ -24,30 +21,53 @@ type alias Month =
 
 type alias Flags =
     { months : List Month
+    , currentMonth : Month
+    , apiKey : String
     }
 
 
 type Msg
-    = ReceiveWeeklyAlbumChart (Result Http.Error (List Album))
+    = ReceiveWeeklyAlbumChart (Result Http.Error LastFmApi.WeeklyAlbumChart)
 
 
 main : Program Flags Model Msg
 main =
     Html.programWithFlags
-        -- { init = { albums = [] } ! [ Http.send ReceiveWeeklyAlbumChart <| getWeeklyAlbumChart ]
-        { init = \flags -> { albums = [], months = flags.months } ! []
+        { init = init
         , update = update
         , subscriptions = \_ -> Sub.none
         , view = view
         }
 
 
+username : String
+username =
+    "ravicious"
+
+
+init : Flags -> ( Model, Cmd Msg )
+init flags =
+    let
+        lastFmClient =
+            LastFmApi.initializeClient flags.apiKey
+    in
+        { albums = []
+        , months = flags.months
+        , lastFmClient = lastFmClient
+        }
+            ! [ Http.send ReceiveWeeklyAlbumChart <|
+                    lastFmClient.getWeeklyAlbumChart username
+                        flags.currentMonth.start
+                        flags.currentMonth.end
+              ]
+
+
 view : Model -> Html Msg
 view model =
-    ol [] <| List.map viewAlbum model.albums
+    ol [] <| List.map viewAlbum <| List.take 15 model.albums
 
 
-viewAlbum : Album -> Html Msg
+viewAlbum : AlbumFromWeeklyChart -> Html Msg
 viewAlbum album =
     li []
         [ text <|
@@ -73,29 +93,3 @@ update msg model =
                     Debug.log "Weekly album chart error" err
             in
                 model ! []
-
-
-weeklyAlbumChartUrl : String
-weeklyAlbumChartUrl =
-    "http://ws.audioscrobbler.com/2.0/?method=user.getweeklyalbumchart&user=ravicious&api_key=917d76183f70ca5d5b5a24abc13e2531&format=json"
-
-
-getWeeklyAlbumChart : Http.Request (List Album)
-getWeeklyAlbumChart =
-    Http.get weeklyAlbumChartUrl <|
-        Json.Decode.at [ "weeklyalbumchart", "album" ] <|
-            Json.Decode.list <|
-                Json.Decode.map3 Album
-                    (Json.Decode.at [ "artist", "#text" ] Json.Decode.string)
-                    (Json.Decode.field "name" Json.Decode.string)
-                    (Json.Decode.field "playcount" Json.Decode.string
-                        |> Json.Decode.andThen
-                            (\string ->
-                                case String.toInt string of
-                                    Ok int ->
-                                        Json.Decode.succeed int
-
-                                    Err err ->
-                                        Json.Decode.fail err
-                            )
-                    )
