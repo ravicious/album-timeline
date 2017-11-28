@@ -2,6 +2,7 @@
   "private": true,
   "dependencies": {
     "elm": "^0.18.0",
+    "elm-format": "^0.6.1-alpha",
     "elm-live": "^2.7.5"
   }
 }
