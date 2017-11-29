@@ -9,7 +9,6 @@ import Array exposing (Array)
 type alias Model =
     { months : Array Month
     , lastFmClient : LastFmApi.Client
-    , numberOfMonths : Int
     , monthsWithAlbums : List MonthWithAlbums
     }
 
@@ -62,7 +61,6 @@ init flags =
         { monthsWithAlbums = []
         , months = flags.months
         , lastFmClient = lastFmClient
-        , numberOfMonths = 0
         }
             ! [ Http.send (ReceiveWeeklyAlbumChartFromMonth flags.currentMonth) <|
                     lastFmClient.getWeeklyAlbumChart username
@@ -104,21 +102,20 @@ update msg model =
         ReceiveWeeklyAlbumChartFromMonth month (Ok albums) ->
             let
                 maybeNextMonth =
-                    Array.get (model.numberOfMonths + 1) model.months
+                    Array.get (List.length model.monthsWithAlbums + 1) model.months
             in
                 { model
                     | monthsWithAlbums = { month = month, albums = albums } :: model.monthsWithAlbums
-                    , numberOfMonths = model.numberOfMonths + 1
                 }
-                    ! [ if model.numberOfMonths < 6 then
-                            Maybe.map
-                                (\nextMonth ->
-                                    Http.send (ReceiveWeeklyAlbumChartFromMonth nextMonth) <|
-                                        model.lastFmClient.getWeeklyAlbumChart username
-                                            nextMonth.start
-                                            nextMonth.end
-                                )
-                                maybeNextMonth
+                    ! [ if List.length model.monthsWithAlbums < 6 then
+                            maybeNextMonth
+                                |> Maybe.map
+                                    (\nextMonth ->
+                                        Http.send (ReceiveWeeklyAlbumChartFromMonth nextMonth) <|
+                                            model.lastFmClient.getWeeklyAlbumChart username
+                                                nextMonth.start
+                                                nextMonth.end
+                                    )
                                 |> Maybe.withDefault Cmd.none
                         else
                             Cmd.none
