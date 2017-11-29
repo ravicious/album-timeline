@@ -3,12 +3,20 @@ module Main exposing (..)
 import Html exposing (..)
 import Http
 import LastFmApi exposing (AlbumFromWeeklyChart)
+import Array exposing (Array)
 
 
 type alias Model =
-    { albums : List AlbumFromWeeklyChart
-    , months : List Month
+    { months : Array Month
     , lastFmClient : LastFmApi.Client
+    , numberOfMonths : Int
+    , monthsWithAlbums : List MonthWithAlbums
+    }
+
+
+type alias MonthWithAlbums =
+    { month : Month
+    , albums : List AlbumFromWeeklyChart
     }
 
 
@@ -20,14 +28,14 @@ type alias Month =
 
 
 type alias Flags =
-    { months : List Month
+    { months : Array Month
     , currentMonth : Month
     , apiKey : String
     }
 
 
 type Msg
-    = ReceiveWeeklyAlbumChart (Result Http.Error LastFmApi.WeeklyAlbumChart)
+    = ReceiveWeeklyAlbumChartFromMonth Month (Result Http.Error LastFmApi.WeeklyAlbumChart)
 
 
 main : Program Flags Model Msg
@@ -51,11 +59,12 @@ init flags =
         lastFmClient =
             LastFmApi.initializeClient flags.apiKey
     in
-        { albums = []
+        { monthsWithAlbums = []
         , months = flags.months
         , lastFmClient = lastFmClient
+        , numberOfMonths = 0
         }
-            ! [ Http.send ReceiveWeeklyAlbumChart <|
+            ! [ Http.send (ReceiveWeeklyAlbumChartFromMonth flags.currentMonth) <|
                     lastFmClient.getWeeklyAlbumChart username
                         flags.currentMonth.start
                         flags.currentMonth.end
@@ -64,7 +73,15 @@ init flags =
 
 view : Model -> Html Msg
 view model =
-    ol [] <| List.map viewAlbum <| List.take 15 model.albums
+    div [] (List.map viewMonthWithAlbums model.monthsWithAlbums)
+
+
+viewMonthWithAlbums : MonthWithAlbums -> Html Msg
+viewMonthWithAlbums { month, albums } =
+    div []
+        [ strong [] [ text month.month ]
+        , ol [] <| List.map viewAlbum <| List.take 15 albums
+        ]
 
 
 viewAlbum : AlbumFromWeeklyChart -> Html Msg
@@ -84,10 +101,30 @@ viewAlbum album =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        ReceiveWeeklyAlbumChart (Ok albums) ->
-            { model | albums = albums } ! []
+        ReceiveWeeklyAlbumChartFromMonth month (Ok albums) ->
+            let
+                maybeNextMonth =
+                    Array.get (model.numberOfMonths + 1) model.months
+            in
+                { model
+                    | monthsWithAlbums = { month = month, albums = albums } :: model.monthsWithAlbums
+                    , numberOfMonths = model.numberOfMonths + 1
+                }
+                    ! [ if model.numberOfMonths < 6 then
+                            Maybe.map
+                                (\nextMonth ->
+                                    Http.send (ReceiveWeeklyAlbumChartFromMonth nextMonth) <|
+                                        model.lastFmClient.getWeeklyAlbumChart username
+                                            nextMonth.start
+                                            nextMonth.end
+                                )
+                                maybeNextMonth
+                                |> Maybe.withDefault Cmd.none
+                        else
+                            Cmd.none
+                      ]
 
-        ReceiveWeeklyAlbumChart (Err err) ->
+        ReceiveWeeklyAlbumChartFromMonth _ (Err err) ->
             let
                 debugError =
                     Debug.log "Weekly album chart error" err
