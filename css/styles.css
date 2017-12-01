@@ -1,0 +1,34 @@
+.months {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.month__albums {
+  display: flex;
+  width: 600px;
+  flex-wrap: wrap;
+}
+
+.month__id {
+  font-size: 20px;
+}
+
+.album {
+  position: relative;
+  width: 200px;
+  height: 200px;
+}
+
+.album__image {
+  position: absolute;
+  width: 100%;
+  z-index: -1;
+}
+
+.album__name-and-artist-wrapper {
+  padding: 7px;
+}
+
+.album__name {
+}
