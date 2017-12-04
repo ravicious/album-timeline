@@ -1,9 +1,10 @@
-module Main exposing (..)
+port module Main exposing (..)
 
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Http
 import LastFmApi exposing (AlbumFromWeeklyChart)
+import RemoteData exposing (WebData)
 import AlbumImageCache exposing (AlbumImageCache)
 import Array exposing (Array)
 import Maybe.Extra
@@ -34,12 +35,13 @@ type alias Flags =
     { months : Array Month
     , currentMonth : Month
     , apiKey : String
+    , albumImageCacheFromLocalStorage : AlbumImageCache.AlbumImageCacheInLocalStorageFormat
     }
 
 
 type Msg
     = ReceiveWeeklyAlbumChartFromMonth Month (Result Http.Error LastFmApi.WeeklyAlbumChart)
-    | ReceiveAlbumInfo AlbumFromWeeklyChart (Result Http.Error LastFmApi.AlbumInfo)
+    | ReceiveAlbumInfo AlbumFromWeeklyChart (WebData LastFmApi.AlbumInfo)
 
 
 maxNumberOfMonthsToFetch : Int
@@ -76,7 +78,9 @@ init flags =
         { monthsWithAlbums = []
         , months = flags.months
         , lastFmClient = lastFmClient
-        , albumImageCache = AlbumImageCache.empty
+        , albumImageCache =
+            AlbumImageCache.convertFromLocalStorageFormat
+                flags.albumImageCacheFromLocalStorage
         }
             ! [ Http.send (ReceiveWeeklyAlbumChartFromMonth flags.currentMonth) <|
                     lastFmClient.getWeeklyAlbumChart username
@@ -146,22 +150,22 @@ update msg model =
             let
                 maybeNextMonth =
                     Array.get (List.length model.monthsWithAlbums + 1) model.months
+
+                ( albumImageCommandsBatch, updatedCache ) =
+                    getImagesForAlbums
+                        model.lastFmClient
+                        model.albumImageCache
+                        albums
             in
                 { model
                     | monthsWithAlbums = { month = month, albums = albums } :: model.monthsWithAlbums
+                    , albumImageCache = updatedCache
                 }
-                    ! [ if List.length model.monthsWithAlbums < maxNumberOfMonthsToFetch then
-                            Maybe.Extra.unwrap Cmd.none
-                                (\nextMonth ->
-                                    Http.send (ReceiveWeeklyAlbumChartFromMonth nextMonth) <|
-                                        model.lastFmClient.getWeeklyAlbumChart username
-                                            nextMonth.start
-                                            nextMonth.end
-                                )
-                                maybeNextMonth
-                        else
-                            Cmd.none
-                      , getImagesForAlbums model.lastFmClient model.albumImageCache albums
+                    ! [ getWeeklyAlbumChartForNextMonth
+                            model.monthsWithAlbums
+                            model.lastFmClient
+                            maybeNextMonth
+                      , albumImageCommandsBatch
                       ]
 
         ReceiveWeeklyAlbumChartFromMonth _ (Err err) ->
@@ -172,35 +176,60 @@ update msg model =
             in
                 model ! []
 
-        ReceiveAlbumInfo album (Ok albumInfo) ->
-            { model
-                | albumImageCache =
-                    AlbumImageCache.addImageUrlForAlbum album
-                        albumInfo.imageUrl
-                        model.albumImageCache
-            }
-                ! []
-
-        ReceiveAlbumInfo album (Err err) ->
+        ReceiveAlbumInfo album albumInfo ->
             let
-                debugError =
-                    Debug.log
-                        ("Error while receiving album info for" ++ album.name ++ " by " ++ album.artist)
-                        err
+                updatedCache =
+                    AlbumImageCache.addImageUrlForAlbum album
+                        (RemoteData.map .imageUrl albumInfo)
+                        model.albumImageCache
             in
-                model ! []
+                { model | albumImageCache = updatedCache }
+                    ! [ if AlbumImageCache.isAnyAlbumLoading updatedCache then
+                            Cmd.none
+                        else
+                            saveAlbumImageCacheToLocalStorage
+                                (AlbumImageCache.convertToLocalStorageFormat updatedCache)
+                      ]
 
 
-getImagesForAlbums : LastFmApi.Client -> AlbumImageCache -> List AlbumFromWeeklyChart -> Cmd Msg
+getWeeklyAlbumChartForNextMonth : List a -> LastFmApi.Client -> Maybe Month -> Cmd Msg
+getWeeklyAlbumChartForNextMonth monthsWithAlbums lastFmClient maybeNextMonth =
+    if List.length monthsWithAlbums < maxNumberOfMonthsToFetch then
+        Maybe.Extra.unwrap Cmd.none
+            (\nextMonth ->
+                Http.send (ReceiveWeeklyAlbumChartFromMonth nextMonth) <|
+                    lastFmClient.getWeeklyAlbumChart username
+                        nextMonth.start
+                        nextMonth.end
+            )
+            maybeNextMonth
+    else
+        Cmd.none
+
+
+getImagesForAlbums :
+    LastFmApi.Client
+    -> AlbumImageCache
+    -> List AlbumFromWeeklyChart
+    -> ( Cmd Msg, AlbumImageCache )
 getImagesForAlbums lastFmClient cache albums =
     let
         albumToCmdFold =
-            \album accCmd ->
-                if AlbumImageCache.isAlbumInCache album cache then
-                    accCmd
+            \album ( accCmd, accCache ) ->
+                if AlbumImageCache.isAlbumInCache album accCache then
+                    ( accCmd, accCache )
                 else
-                    Cmd.batch [ accCmd, Http.send (ReceiveAlbumInfo album) (lastFmClient.getAlbumInfo album) ]
+                    ( Cmd.batch
+                        [ accCmd
+                        , RemoteData.sendRequest (lastFmClient.getAlbumInfo album)
+                            |> Cmd.map (ReceiveAlbumInfo album)
+                        ]
+                    , AlbumImageCache.markAlbumAsLoading album accCache
+                    )
     in
         albums
             |> List.take 15
-            |> List.foldl albumToCmdFold Cmd.none
+            |> List.foldl albumToCmdFold ( Cmd.none, cache )
+
+
+port saveAlbumImageCacheToLocalStorage : AlbumImageCache.AlbumImageCacheInLocalStorageFormat -> Cmd msg
