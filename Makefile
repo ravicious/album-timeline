@@ -31,6 +31,6 @@ test:
 	yarn elm-test
 
 format-validate:
-	yarn elm-format src/ tests/ --validate
+	yarn elm-format src/ --validate
 
 check: test format-validate
