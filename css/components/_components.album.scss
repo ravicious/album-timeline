@@ -1,0 +1,27 @@
+/* ==========================================================================
+   #ALBUM
+   ========================================================================== */
+.c-album {
+  // position: relative;
+  flex: 1 0 33%;
+  // width: $inuit-global-spacing-unit * 9;
+  // height: $inuit-global-spacing-unit * 9;
+
+  &.without-image {
+    min-height: 100%;
+    width: 100%;
+    background-image: url('../images/default-cover.jpg?v=1');
+    background-repeat: no-repeat;
+    background-size: cover;
+  }
+}
+
+.c-album__image {
+  // position: absolute;
+  // width: 100%;
+  z-index: -1;
+}
+
+.c-album__name-and-artist-wrapper {
+  padding: $inuit-global-spacing-unit-small;
+}

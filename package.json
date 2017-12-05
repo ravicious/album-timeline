@@ -3,6 +3,8 @@
   "dependencies": {
     "elm": "^0.18.0",
     "elm-format": "^0.6.1-alpha",
-    "elm-live": "^2.7.5"
+    "elm-live": "^2.7.5",
+    "inuitcss": "^6.0.0-beta.5",
+    "node-sass": "^4.7.2"
   }
 }

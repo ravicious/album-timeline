@@ -1,0 +1,16 @@
+/* ==========================================================================
+   #MONTH
+   ========================================================================== */
+
+.c-month {
+}
+
+.c-month__albums {
+  display: flex;
+  max-width: $inuit-global-spacing-unit * 9 * 3;
+  flex-wrap: wrap;
+}
+
+.c-month__id {
+  @include font-size($inuit-font-size-h2);
+}

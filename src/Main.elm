@@ -46,7 +46,12 @@ type Msg
 
 maxNumberOfMonthsToFetch : Int
 maxNumberOfMonthsToFetch =
-    6
+    12
+
+
+itemsPerRow : Int
+itemsPerRow =
+    3
 
 
 defaultCoverPath : String
@@ -91,7 +96,7 @@ init flags =
 
 view : Model -> Html Msg
 view model =
-    div [ class "months" ]
+    div [ class "c-month-list" ]
         (List.map (viewMonthWithAlbums model.albumImageCache)
             (List.reverse model.monthsWithAlbums)
         )
@@ -99,48 +104,64 @@ view model =
 
 viewMonthWithAlbums : AlbumImageCache -> MonthWithAlbums -> Html Msg
 viewMonthWithAlbums cache { month, albums } =
-    div [ class "month" ]
-        [ h2 [ class "month__id" ] [ text month.month ]
-
-        -- TODO: Consider passing just the image url for each album and benchmark results.
-        -- Elm may re-render all albums each time anything in the cache changes.
-        , div [ class "month__albums" ] <| List.map (viewAlbum cache) <| List.take 15 albums
-        ]
-
-
-viewAlbum : AlbumImageCache -> AlbumFromWeeklyChart -> Html Msg
-viewAlbum cache album =
     let
-        artistAndName =
-            album.artist ++ " - " ++ album.name
+        renderedAlbums =
+            List.map (Just >> viewAlbum cache) <| List.take 15 albums
 
-        imageUrlFromCache =
-            AlbumImageCache.getImageUrlForAlbum album cache
-
-        hasImage =
-            imageUrlFromCache |> String.isEmpty |> not
-
-        imageUrl =
-            if hasImage then
-                imageUrlFromCache
+        emptySpacesForPadding =
+            if (List.length renderedAlbums) % itemsPerRow /= 0 then
+                List.repeat (3 - (List.length renderedAlbums) % itemsPerRow) (viewAlbum cache Nothing)
             else
-                defaultCoverPath
-    in
-        div [ class "album", title artistAndName ]
-            [ img
-                [ class "album__image"
-                , src imageUrl
-                , alt artistAndName
-                ]
                 []
-            , if not hasImage then
-                div [ class "album__name-and-artist-wrapper" ]
-                    [ div [ class "album__artist" ] [ text album.artist ]
-                    , div [ class "album__name" ] [ text album.name ]
-                    ]
-              else
-                text ""
+    in
+        div [ class "c-month" ]
+            [ h2 [ class "c-month__id" ] [ text month.month ]
+
+            -- TODO: Consider passing just the image url for each album and benchmark results.
+            -- Elm may re-render all albums each time anything in the cache changes.
+            , div [ class "c-month__albums" ] (List.append renderedAlbums emptySpacesForPadding)
             ]
+
+
+viewAlbum : AlbumImageCache -> Maybe AlbumFromWeeklyChart -> Html Msg
+viewAlbum cache maybeAlbum =
+    case maybeAlbum of
+        Just album ->
+            let
+                artistAndName =
+                    album.artist ++ " - " ++ album.name
+
+                imageUrlFromCache =
+                    AlbumImageCache.getImageUrlForAlbum album cache
+
+                hasImage =
+                    imageUrlFromCache |> String.isEmpty |> not
+
+                imageUrl =
+                    if hasImage then
+                        imageUrlFromCache
+                    else
+                        defaultCoverPath
+            in
+                if hasImage then
+                    div [ class "c-album", title artistAndName ]
+                        [ img
+                            [ class "c-album__image"
+                            , src imageUrl
+                            , alt artistAndName
+                            ]
+                            []
+                        ]
+                else
+                    div [ class "c-album without-image", title artistAndName ]
+                        [ div [ class "c-album__name-and-artist-wrapper" ]
+                            [ div [ class "c-album__artist" ] [ text album.artist ]
+                            , div [ class "c-album__name" ] [ text album.name ]
+                            ]
+                        ]
+
+        Nothing ->
+            div [ class "c-album" ] []
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
