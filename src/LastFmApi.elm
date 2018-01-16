@@ -1,8 +1,10 @@
 module LastFmApi
     exposing
         ( AlbumFromWeeklyChart
+        , AlbumId
         , AlbumInfo
         , Client
+        , PlayCount
         , WeeklyAlbumChart
         , albumToAlbumId
         , initializeClient
@@ -21,6 +23,10 @@ type alias Client =
     }
 
 
+type alias AlbumId =
+    String
+
+
 type alias WeeklyAlbumChart =
     List AlbumFromWeeklyChart
 
@@ -29,11 +35,15 @@ type alias WeeklyAlbumChartResult =
     Result Http.Error WeeklyAlbumChart
 
 
+type alias PlayCount =
+    Int
+
+
 type alias AlbumFromWeeklyChart =
     { artist : String
     , name : String
     , musicBrainzId : String
-    , playCount : Int
+    , playCount : PlayCount
     }
 
 
@@ -53,7 +63,7 @@ initializeClient apiKey =
     }
 
 
-albumToAlbumId : AlbumFromWeeklyChart -> String
+albumToAlbumId : AlbumFromWeeklyChart -> AlbumId
 albumToAlbumId album =
     if String.isEmpty album.musicBrainzId then
         album.artist ++ album.name

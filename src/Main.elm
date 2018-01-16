@@ -1,9 +1,12 @@
 port module Main exposing (..)
 
+import AlbumStats exposing (AlbumStats)
+import AlbumStatsStore exposing (AlbumStatsStore)
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Http
 import LastFmApi exposing (AlbumFromWeeklyChart)
+import Month exposing (Month)
 import RemoteData exposing (WebData)
 import AlbumImageCache exposing (AlbumImageCache)
 import Array exposing (Array)
@@ -15,19 +18,13 @@ type alias Model =
     , lastFmClient : LastFmApi.Client
     , monthsWithAlbums : List MonthWithAlbums
     , albumImageCache : AlbumImageCache
+    , albumStatsStore : AlbumStatsStore
     }
 
 
 type alias MonthWithAlbums =
     { month : Month
     , albums : List AlbumFromWeeklyChart
-    }
-
-
-type alias Month =
-    { month : String
-    , start : Int
-    , end : Int
     }
 
 
@@ -46,7 +43,7 @@ type Msg
 
 maxNumberOfMonthsToFetch : Int
 maxNumberOfMonthsToFetch =
-    12
+    96
 
 
 itemsPerRow : Int
@@ -83,6 +80,7 @@ init flags =
         { monthsWithAlbums = []
         , months = flags.months
         , lastFmClient = lastFmClient
+        , albumStatsStore = AlbumStatsStore.empty
         , albumImageCache =
             AlbumImageCache.convertFromLocalStorageFormat
                 flags.albumImageCacheFromLocalStorage
@@ -97,20 +95,24 @@ init flags =
 view : Model -> Html Msg
 view model =
     div [ class "c-month-list" ]
-        (List.map (viewMonthWithAlbums model.albumImageCache)
+        (List.map (viewMonthWithAlbums model.albumImageCache model.albumStatsStore)
             (List.reverse model.monthsWithAlbums)
         )
 
 
-viewMonthWithAlbums : AlbumImageCache -> MonthWithAlbums -> Html Msg
-viewMonthWithAlbums cache { month, albums } =
+viewMonthWithAlbums : AlbumImageCache -> AlbumStatsStore -> MonthWithAlbums -> Html Msg
+viewMonthWithAlbums cache albumStatsStore { month, albums } =
     let
         renderedAlbums =
-            List.map (Just >> viewAlbum cache) <| List.take 15 albums
+            List.map (Just >> viewAlbum cache albumStatsStore) <| List.take 15 albums
 
         emptySpacesForPadding =
             if (List.length renderedAlbums) % itemsPerRow /= 0 then
-                List.repeat (3 - (List.length renderedAlbums) % itemsPerRow) (viewAlbum cache Nothing)
+                List.repeat (3 - (List.length renderedAlbums) % itemsPerRow)
+                    (viewAlbum cache
+                        albumStatsStore
+                        Nothing
+                    )
             else
                 []
     in
@@ -123,8 +125,8 @@ viewMonthWithAlbums cache { month, albums } =
             ]
 
 
-viewAlbum : AlbumImageCache -> Maybe AlbumFromWeeklyChart -> Html Msg
-viewAlbum cache maybeAlbum =
+viewAlbum : AlbumImageCache -> AlbumStatsStore -> Maybe AlbumFromWeeklyChart -> Html Msg
+viewAlbum cache albumStatsStore maybeAlbum =
     case maybeAlbum of
         Just album ->
             let
@@ -133,6 +135,9 @@ viewAlbum cache maybeAlbum =
 
                 imageUrlFromCache =
                     AlbumImageCache.getImageUrlForAlbum album cache
+
+                maybeStats =
+                    AlbumStatsStore.getAlbumStats album albumStatsStore
 
                 hasImage =
                     imageUrlFromCache |> String.isEmpty |> not
@@ -151,6 +156,7 @@ viewAlbum cache maybeAlbum =
                             , alt artistAndName
                             ]
                             []
+                        , viewStats maybeStats
                         ]
                 else
                     div [ class "c-album without-image", title artistAndName ]
@@ -158,10 +164,24 @@ viewAlbum cache maybeAlbum =
                             [ div [ class "c-album__artist" ] [ text album.artist ]
                             , div [ class "c-album__name" ] [ text album.name ]
                             ]
+                        , viewStats maybeStats
                         ]
 
         Nothing ->
             div [ class "c-album" ] []
+
+
+viewStats : Maybe AlbumStats -> Html Msg
+viewStats maybeStats =
+    case maybeStats of
+        Nothing ->
+            text ""
+
+        Just stats ->
+            ul []
+                [ li [] [ text <| "Most listened to: " ++ (AlbumStats.getMostListenedToMonth stats) ]
+                , li [] [ text <| "First listened to: " ++ (AlbumStats.getFirstListenedToMonth stats) ]
+                ]
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -172,6 +192,18 @@ update msg model =
                 maybeNextMonth =
                     Array.get (List.length model.monthsWithAlbums + 1) model.months
 
+                updatedAlbumStatsStore =
+                    List.foldl
+                        (\album albumStatsStore ->
+                            AlbumStatsStore.addPlayCountForMonthForAlbum
+                                album.playCount
+                                month.month
+                                album
+                                albumStatsStore
+                        )
+                        model.albumStatsStore
+                        albums
+
                 ( albumImageCommandsBatch, updatedCache ) =
                     getImagesForAlbums
                         model.lastFmClient
@@ -181,6 +213,7 @@ update msg model =
                 { model
                     | monthsWithAlbums = { month = month, albums = albums } :: model.monthsWithAlbums
                     , albumImageCache = updatedCache
+                    , albumStatsStore = updatedAlbumStatsStore
                 }
                     ! [ getWeeklyAlbumChartForNextMonth
                             model.monthsWithAlbums
