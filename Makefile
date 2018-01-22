@@ -35,7 +35,7 @@ sass-watch: css/main.css
 
 main.min.js : ELM_MAKE_FLAGS =
 main.min.js: main.js
-	-closure-compiler --js $< --js_output_file $@ --compilation_level SIMPLE_OPTIMIZATIONS 
+	yarn uglifyjs --output $@ $<
 
 release : SASS_OPT_FLAGS =
 release : SASS_OUTPUT_STYLE = compressed
