@@ -1,14 +1,14 @@
 port module Main exposing (..)
 
+import AlbumStore exposing (AlbumStore)
+import Album exposing (Album)
 import AlbumStats exposing (AlbumStats)
-import AlbumStatsStore exposing (AlbumStatsStore)
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Http
 import LastFmApi exposing (AlbumFromWeeklyChart)
 import Month exposing (Month)
 import RemoteData exposing (WebData)
-import AlbumImageCache exposing (AlbumImageCache)
 import Array exposing (Array)
 import Maybe.Extra
 
@@ -17,8 +17,7 @@ type alias Model =
     { months : Array Month
     , lastFmClient : LastFmApi.Client
     , monthsWithAlbums : List MonthWithAlbums
-    , albumImageCache : AlbumImageCache
-    , albumStatsStore : AlbumStatsStore
+    , albumStore : AlbumStore
     }
 
 
@@ -32,7 +31,7 @@ type alias Flags =
     { months : Array Month
     , currentMonth : Month
     , apiKey : String
-    , albumImageCacheFromLocalStorage : AlbumImageCache.AlbumImageCacheInLocalStorageFormat
+    , albumImageCacheFromLocalStorage : AlbumStore.AlbumImagesInLocalStorageFormat
     }
 
 
@@ -43,7 +42,7 @@ type Msg
 
 maxNumberOfMonthsToFetch : Int
 maxNumberOfMonthsToFetch =
-    96
+    6
 
 
 itemsPerRow : Int
@@ -80,9 +79,8 @@ init flags =
         { monthsWithAlbums = []
         , months = flags.months
         , lastFmClient = lastFmClient
-        , albumStatsStore = AlbumStatsStore.empty
-        , albumImageCache =
-            AlbumImageCache.convertFromLocalStorageFormat
+        , albumStore =
+            AlbumStore.initializeFromLocalStorageFormat
                 flags.albumImageCacheFromLocalStorage
         }
             ! [ Http.send (ReceiveWeeklyAlbumChartFromMonth flags.currentMonth) <|
@@ -95,24 +93,34 @@ init flags =
 view : Model -> Html Msg
 view model =
     div [ class "c-month-list" ]
-        (List.map (viewMonthWithAlbums model.albumImageCache model.albumStatsStore)
+        (List.map (viewMonthWithAlbums model.albumStore)
             (List.reverse model.monthsWithAlbums)
         )
 
 
-viewMonthWithAlbums : AlbumImageCache -> AlbumStatsStore -> MonthWithAlbums -> Html Msg
-viewMonthWithAlbums cache albumStatsStore { month, albums } =
+viewMonthWithAlbums : AlbumStore -> MonthWithAlbums -> Html Msg
+viewMonthWithAlbums albumStore { month, albums } =
     let
         renderedAlbums =
-            List.map (Just >> viewAlbum cache albumStatsStore) <| List.take 15 albums
+            albums
+                |> List.take 15
+                |> List.foldr
+                    (\albumFromWeeklyChart accRenderedAlbums ->
+                        LastFmApi.albumToAlbumId albumFromWeeklyChart
+                            |> (flip AlbumStore.get) albumStore
+                            |> Maybe.map
+                                (\album ->
+                                    (viewAlbum <| Just ( albumFromWeeklyChart, album ))
+                                        :: accRenderedAlbums
+                                )
+                            |> Maybe.withDefault accRenderedAlbums
+                    )
+                    []
 
         emptySpacesForPadding =
             if (List.length renderedAlbums) % itemsPerRow /= 0 then
                 List.repeat (3 - (List.length renderedAlbums) % itemsPerRow)
-                    (viewAlbum cache
-                        albumStatsStore
-                        Nothing
-                    )
+                    (viewAlbum Nothing)
             else
                 []
     in
@@ -125,26 +133,23 @@ viewMonthWithAlbums cache albumStatsStore { month, albums } =
             ]
 
 
-viewAlbum : AlbumImageCache -> AlbumStatsStore -> Maybe AlbumFromWeeklyChart -> Html Msg
-viewAlbum cache albumStatsStore maybeAlbum =
-    case maybeAlbum of
-        Just album ->
+viewAlbum : Maybe ( AlbumFromWeeklyChart, Album ) -> Html Msg
+viewAlbum maybeAlbumFromWeeklyChartAndAlbum =
+    case maybeAlbumFromWeeklyChartAndAlbum of
+        Nothing ->
+            div [ class "c-album" ] []
+
+        Just ( albumFromWeeklyChart, album ) ->
             let
                 artistAndName =
-                    album.artist ++ " - " ++ album.name
-
-                imageUrlFromCache =
-                    AlbumImageCache.getImageUrlForAlbum album cache
-
-                maybeStats =
-                    AlbumStatsStore.getAlbumStats album albumStatsStore
+                    albumFromWeeklyChart.artist ++ " - " ++ albumFromWeeklyChart.name
 
                 hasImage =
-                    imageUrlFromCache |> String.isEmpty |> not
+                    Album.hasImageUrl album
 
                 imageUrl =
                     if hasImage then
-                        imageUrlFromCache
+                        Album.getImageUrl album
                     else
                         defaultCoverPath
             in
@@ -156,19 +161,16 @@ viewAlbum cache albumStatsStore maybeAlbum =
                             , alt artistAndName
                             ]
                             []
-                        , viewStats maybeStats
+                        , viewStats album.stats
                         ]
                 else
                     div [ class "c-album without-image", title artistAndName ]
                         [ div [ class "c-album__name-and-artist-wrapper" ]
-                            [ div [ class "c-album__artist" ] [ text album.artist ]
-                            , div [ class "c-album__name" ] [ text album.name ]
+                            [ div [ class "c-album__artist" ] [ text albumFromWeeklyChart.artist ]
+                            , div [ class "c-album__name" ] [ text albumFromWeeklyChart.name ]
                             ]
-                        , viewStats maybeStats
+                        , viewStats album.stats
                         ]
-
-        Nothing ->
-            div [ class "c-album" ] []
 
 
 viewStats : Maybe AlbumStats -> Html Msg
@@ -179,8 +181,12 @@ viewStats maybeStats =
 
         Just stats ->
             ul []
-                [ li [] [ text <| "Most listened to: " ++ (AlbumStats.getMostListenedToMonth stats) ]
-                , li [] [ text <| "First listened to: " ++ (AlbumStats.getFirstListenedToMonth stats) ]
+                [ li []
+                    [ text <| "Most listened to: " ++ (AlbumStats.getMostListenedToMonth stats)
+                    ]
+                , li []
+                    [ text <| "First listened to: " ++ (AlbumStats.getFirstListenedToMonth stats)
+                    ]
                 ]
 
 
@@ -192,28 +198,27 @@ update msg model =
                 maybeNextMonth =
                     Array.get (List.length model.monthsWithAlbums + 1) model.months
 
-                updatedAlbumStatsStore =
+                albumStoreWithUpdatedPlayCounts =
                     List.foldl
-                        (\album albumStatsStore ->
-                            AlbumStatsStore.addPlayCountForMonthForAlbum
+                        (\album albumStore ->
+                            AlbumStore.addPlayCountForMonthForAlbum
                                 album.playCount
                                 month.month
-                                album
-                                albumStatsStore
+                                (LastFmApi.albumToAlbumId album)
+                                albumStore
                         )
-                        model.albumStatsStore
+                        model.albumStore
                         albums
 
-                ( albumImageCommandsBatch, updatedCache ) =
+                ( albumImageCommandsBatch, updatedAlbumStore ) =
                     getImagesForAlbums
                         model.lastFmClient
-                        model.albumImageCache
+                        albumStoreWithUpdatedPlayCounts
                         albums
             in
                 { model
                     | monthsWithAlbums = { month = month, albums = albums } :: model.monthsWithAlbums
-                    , albumImageCache = updatedCache
-                    , albumStatsStore = updatedAlbumStatsStore
+                    , albumStore = updatedAlbumStore
                 }
                     ! [ getWeeklyAlbumChartForNextMonth
                             model.monthsWithAlbums
@@ -232,17 +237,17 @@ update msg model =
 
         ReceiveAlbumInfo album albumInfo ->
             let
-                updatedCache =
-                    AlbumImageCache.addImageUrlForAlbum album
+                updatedAlbumStore =
+                    AlbumStore.updateRemoteImageUrlForAlbum (LastFmApi.albumToAlbumId album)
                         (RemoteData.map .imageUrl albumInfo)
-                        model.albumImageCache
+                        model.albumStore
             in
-                { model | albumImageCache = updatedCache }
-                    ! [ if AlbumImageCache.isAnyAlbumLoading updatedCache then
+                { model | albumStore = updatedAlbumStore }
+                    ! [ if AlbumStore.isAnyAlbumLoadingImageUrl updatedAlbumStore then
                             Cmd.none
                         else
                             saveAlbumImageCacheToLocalStorage
-                                (AlbumImageCache.convertToLocalStorageFormat updatedCache)
+                                (AlbumStore.convertToLocalStorageFormat updatedAlbumStore)
                       ]
 
 
@@ -263,27 +268,31 @@ getWeeklyAlbumChartForNextMonth monthsWithAlbums lastFmClient maybeNextMonth =
 
 getImagesForAlbums :
     LastFmApi.Client
-    -> AlbumImageCache
+    -> AlbumStore
     -> List AlbumFromWeeklyChart
-    -> ( Cmd Msg, AlbumImageCache )
-getImagesForAlbums lastFmClient cache albums =
+    -> ( Cmd Msg, AlbumStore )
+getImagesForAlbums lastFmClient store albums =
     let
         albumToCmdFold =
-            \album ( accCmd, accCache ) ->
-                if AlbumImageCache.isAlbumInCache album accCache then
-                    ( accCmd, accCache )
-                else
-                    ( Cmd.batch
-                        [ accCmd
-                        , RemoteData.sendRequest (lastFmClient.getAlbumInfo album)
-                            |> Cmd.map (ReceiveAlbumInfo album)
-                        ]
-                    , AlbumImageCache.markAlbumAsLoading album accCache
-                    )
+            \album ( accCmd, accStore ) ->
+                let
+                    albumId =
+                        LastFmApi.albumToAlbumId album
+                in
+                    if AlbumStore.doesAlbumHaveImageUrl albumId accStore then
+                        ( accCmd, accStore )
+                    else
+                        ( Cmd.batch
+                            [ accCmd
+                            , RemoteData.sendRequest (lastFmClient.getAlbumInfo album)
+                                |> Cmd.map (ReceiveAlbumInfo album)
+                            ]
+                        , AlbumStore.markAlbumImageUrlAsLoading albumId accStore
+                        )
     in
         albums
             |> List.take 15
-            |> List.foldl albumToCmdFold ( Cmd.none, cache )
+            |> List.foldl albumToCmdFold ( Cmd.none, store )
 
 
-port saveAlbumImageCacheToLocalStorage : AlbumImageCache.AlbumImageCacheInLocalStorageFormat -> Cmd msg
+port saveAlbumImageCacheToLocalStorage : AlbumStore.AlbumImagesInLocalStorageFormat -> Cmd msg

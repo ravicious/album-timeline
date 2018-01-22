@@ -40,7 +40,7 @@ while (dateFns.isAfter(currentDate, lastFmLaunchDate) || dateFns.isEqual(current
 // Restore image cache.
 //
 
-var cacheKey = 'image-cache-v1'
+var cacheKey = 'image-cache-v2'
 var albumImageCacheFromLocalStorage = null
 
 try {
