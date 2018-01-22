@@ -22,7 +22,7 @@ clean-deps:
 	rm -rf elm-stuff
 
 clean:
-	rm -f main.js css/main.css
+	rm -f main.js css/main.css main.min.js
 	rm -rf elm-stuff/build-artifacts
 
 server:
