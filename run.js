@@ -54,6 +54,19 @@ if (!albumImageCacheFromLocalStorage) {
   albumImageCacheFromLocalStorage = "[]"
 }
 
+// Get parameters from query string.
+
+var numberOfMonthsToFetch = null
+var username = null
+
+if (window.URLSearchParams) {
+  var queryParams = new URLSearchParams(window.location.search)
+
+  var numberOfMonthsToFetch = queryParams.get('months') && parseInt(queryParams.get('months'), 10)
+  var username = queryParams.get('username')
+}
+
+
 //
 // Start the app
 //
@@ -62,7 +75,9 @@ var app = Elm.Main.embed(node, {
   months: months,
   currentMonth: currentMonth,
   apiKey: apiKey,
-  albumImageCacheFromLocalStorage: JSON.parse(albumImageCacheFromLocalStorage)
+  albumImageCacheFromLocalStorage: JSON.parse(albumImageCacheFromLocalStorage),
+  numberOfMonthsToFetch: numberOfMonthsToFetch,
+  username: username,
 })
 
 //

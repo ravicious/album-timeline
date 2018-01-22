@@ -18,6 +18,8 @@ type alias Model =
     , lastFmClient : LastFmApi.Client
     , monthsWithAlbums : List MonthWithAlbums
     , albumStore : AlbumStore
+    , username : String
+    , numberOfMonthsToFetch : Int
     }
 
 
@@ -32,17 +34,14 @@ type alias Flags =
     , currentMonth : Month
     , apiKey : String
     , albumImageCacheFromLocalStorage : AlbumStore.AlbumImagesInLocalStorageFormat
+    , username : Maybe String
+    , numberOfMonthsToFetch : Maybe Int
     }
 
 
 type Msg
     = ReceiveWeeklyAlbumChartFromMonth Month (Result Http.Error LastFmApi.WeeklyAlbumChart)
     | ReceiveAlbumInfo AlbumFromWeeklyChart (WebData LastFmApi.AlbumInfo)
-
-
-maxNumberOfMonthsToFetch : Int
-maxNumberOfMonthsToFetch =
-    6
 
 
 itemsPerRow : Int
@@ -65,9 +64,14 @@ main =
         }
 
 
-username : String
-username =
+defaultUsername : String
+defaultUsername =
     "ravicious"
+
+
+defaultNumberOfMonthsToFetch : Int
+defaultNumberOfMonthsToFetch =
+    6
 
 
 init : Flags -> ( Model, Cmd Msg )
@@ -75,10 +79,18 @@ init flags =
     let
         lastFmClient =
             LastFmApi.initializeClient flags.apiKey
+
+        username =
+            Maybe.withDefault defaultUsername flags.username
+
+        numberOfMonthsToFetch =
+            Maybe.withDefault defaultNumberOfMonthsToFetch flags.numberOfMonthsToFetch
     in
         { monthsWithAlbums = []
         , months = flags.months
         , lastFmClient = lastFmClient
+        , username = username
+        , numberOfMonthsToFetch = numberOfMonthsToFetch
         , albumStore =
             AlbumStore.initializeFromLocalStorageFormat
                 flags.albumImageCacheFromLocalStorage
@@ -223,6 +235,8 @@ update msg model =
                     ! [ getWeeklyAlbumChartForNextMonth
                             model.monthsWithAlbums
                             model.lastFmClient
+                            model.username
+                            model.numberOfMonthsToFetch
                             maybeNextMonth
                       , albumImageCommandsBatch
                       ]
@@ -251,9 +265,15 @@ update msg model =
                       ]
 
 
-getWeeklyAlbumChartForNextMonth : List a -> LastFmApi.Client -> Maybe Month -> Cmd Msg
-getWeeklyAlbumChartForNextMonth monthsWithAlbums lastFmClient maybeNextMonth =
-    if List.length monthsWithAlbums < maxNumberOfMonthsToFetch then
+getWeeklyAlbumChartForNextMonth :
+    List a
+    -> LastFmApi.Client
+    -> String
+    -> Int
+    -> Maybe Month
+    -> Cmd Msg
+getWeeklyAlbumChartForNextMonth monthsWithAlbums lastFmClient username numberOfMonthsToFetch maybeNextMonth =
+    if List.length monthsWithAlbums < numberOfMonthsToFetch then
         Maybe.Extra.unwrap Cmd.none
             (\nextMonth ->
                 Http.send (ReceiveWeeklyAlbumChartFromMonth nextMonth) <|
