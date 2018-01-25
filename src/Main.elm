@@ -165,24 +165,27 @@ viewAlbum maybeAlbumFromWeeklyChartAndAlbum =
                     else
                         defaultCoverPath
             in
-                if hasImage then
-                    div [ class "c-album", title artistAndName ]
-                        [ img
-                            [ class "c-album__image"
-                            , src imageUrl
-                            , alt artistAndName
+                if Album.hasLoadedImageUrl album then
+                    if hasImage then
+                        div [ class "c-album", title artistAndName ]
+                            [ img
+                                [ class "c-album__image"
+                                , src imageUrl
+                                , alt artistAndName
+                                ]
+                                []
+                            , viewStats album.stats
                             ]
-                            []
-                        , viewStats album.stats
-                        ]
+                    else
+                        div [ class "c-album without-image", title artistAndName ]
+                            [ div [ class "c-album__name-and-artist-wrapper" ]
+                                [ div [ class "c-album__artist" ] [ text albumFromWeeklyChart.artist ]
+                                , div [ class "c-album__name" ] [ text albumFromWeeklyChart.name ]
+                                ]
+                            , viewStats album.stats
+                            ]
                 else
-                    div [ class "c-album without-image", title artistAndName ]
-                        [ div [ class "c-album__name-and-artist-wrapper" ]
-                            [ div [ class "c-album__artist" ] [ text albumFromWeeklyChart.artist ]
-                            , div [ class "c-album__name" ] [ text albumFromWeeklyChart.name ]
-                            ]
-                        , viewStats album.stats
-                        ]
+                    div [ class "c-album" ] [ text "Loading" ]
 
 
 viewStats : Maybe AlbumStats -> Html Msg

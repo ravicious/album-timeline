@@ -43,7 +43,7 @@ convertToLocalStorageFormat =
     Dict.values
         >> List.foldl
             (\album accAlbumImages ->
-                if Album.hasLoadedImageUrl album then
+                if Album.hasSuccessfullyLoadedImageUrl album then
                     ( album.id, Album.getImageUrl album ) :: accAlbumImages
                 else
                     accAlbumImages

@@ -6,6 +6,7 @@ module Album
         , getImageUrl
         , hasImageUrl
         , hasLoadedImageUrl
+        , hasSuccessfullyLoadedImageUrl
         , initialize
         , isLoadingImageUrl
         , markImageUrlAsLoading
@@ -78,5 +79,10 @@ isLoadingImageUrl =
 
 
 hasLoadedImageUrl : Album -> Bool
-hasLoadedImageUrl =
+hasLoadedImageUrl album =
+    RemoteData.isSuccess album.imageUrl || RemoteData.isFailure album.imageUrl
+
+
+hasSuccessfullyLoadedImageUrl : Album -> Bool
+hasSuccessfullyLoadedImageUrl =
     .imageUrl >> RemoteData.isSuccess
